@@ -1,0 +1,141 @@
+{
+  "meta": {
+    "dataset": "A",
+    "n_answers": 2309,
+    "n_guesses": 2309,
+    "evaluation_games": 2309,
+    "seed": 42,
+    "max_guesses": 6,
+    "feedback_table_build_s": 3.906095557998924,
+    "feedback_table_MB": 5.331481,
+    "environment": {
+      "python": "3.13.5",
+      "numpy": "2.5.3",
+      "platform": "Linux-6.6.119-09251-gf81e51484dec-x86_64-with-glibc2.41",
+      "processor": "x86_64"
+    }
+  },
+  "results": [
+    {
+      "agent": "search-entropy",
+      "games": 2309,
+      "win_rate": 1.0,
+      "avg_guesses_solved": 3.494586401039411,
+      "median_guesses_solved": 3,
+      "max_guesses_solved": 6,
+      "failed_games": 0,
+      "distribution": {
+        "1": 1,
+        "2": 61,
+        "3": 1138,
+        "4": 1015,
+        "5": 92,
+        "6": 2
+      },
+      "total_runtime_s": 139.066738295267,
+      "mean_time_per_game_ms": 60.22812399102078,
+      "max_time_per_game_ms": 752.7648820032482,
+      "mean_guess_evaluations_per_game": 3332,
+      "first_guess": "raise",
+      "root_precompute_s": 0.5092548779939534,
+      "peak_rss_MB_after": 94.70703125
+    },
+    {
+      "agent": "search-expected_size",
+      "games": 2309,
+      "win_rate": 1.0,
+      "avg_guesses_solved": 3.524036379385015,
+      "median_guesses_solved": 4,
+      "max_guesses_solved": 5,
+      "failed_games": 0,
+      "distribution": {
+        "1": 1,
+        "2": 61,
+        "3": 1066,
+        "4": 1089,
+        "5": 92
+      },
+      "total_runtime_s": 43.9855533852533,
+      "mean_time_per_game_ms": 19.049611686987134,
+      "max_time_per_game_ms": 135.96574199618772,
+      "mean_guess_evaluations_per_game": 3410,
+      "first_guess": "raise",
+      "root_precompute_s": 0.3510417589932331,
+      "peak_rss_MB_after": 95.6484375
+    },
+    {
+      "agent": "search-minimax",
+      "games": 2309,
+      "win_rate": 1.0,
+      "avg_guesses_solved": 3.584668687743612,
+      "median_guesses_solved": 4,
+      "max_guesses_solved": 6,
+      "failed_games": 0,
+      "distribution": {
+        "1": 1,
+        "2": 64,
+        "3": 961,
+        "4": 1151,
+        "5": 131,
+        "6": 1
+      },
+      "total_runtime_s": 32.21053810707235,
+      "mean_time_per_game_ms": 13.94999484931674,
+      "max_time_per_game_ms": 175.40990300039994,
+      "mean_guess_evaluations_per_game": 3550,
+      "first_guess": "arise",
+      "root_precompute_s": 0.18375176599511178,
+      "peak_rss_MB_after": 95.6484375
+    },
+    {
+      "agent": "random-candidate",
+      "games": 2309,
+      "win_rate": 0.9857080987440451,
+      "avg_guesses_solved": 4.020650263620387,
+      "median_guesses_solved": 4.0,
+      "max_guesses_solved": 6,
+      "failed_games": 33,
+      "distribution": {
+        "fail": 33,
+        "1": 1,
+        "2": 97,
+        "3": 584,
+        "4": 916,
+        "5": 528,
+        "6": 150
+      },
+      "total_runtime_s": 0.9582903521513799,
+      "mean_time_per_game_ms": 0.41502397234793414,
+      "max_time_per_game_ms": 9.198715000820812,
+      "mean_guess_evaluations_per_game": 0,
+      "first_guess": null,
+      "root_precompute_s": 0.0021875060047023,
+      "peak_rss_MB_after": 95.7734375
+    },
+    {
+      "agent": "dfs-alphabetical",
+      "games": 2309,
+      "win_rate": 0.9757470766565612,
+      "avg_guesses_solved": 4.274300932090546,
+      "median_guesses_solved": 4,
+      "max_guesses_solved": 6,
+      "failed_games": 56,
+      "distribution": {
+        "fail": 56,
+        "1": 1,
+        "2": 56,
+        "3": 406,
+        "4": 861,
+        "5": 719,
+        "6": 210
+      },
+      "total_runtime_s": 0.7110210250175442,
+      "mean_time_per_game_ms": 0.30793461455935217,
+      "max_time_per_game_ms": 6.601601999136619,
+      "mean_guess_evaluations_per_game": 0,
+      "first_guess": null,
+      "root_precompute_s": 2.8112001018598676e-05,
+      "peak_rss_MB_after": 95.7734375
+    }
+  ]
+}
