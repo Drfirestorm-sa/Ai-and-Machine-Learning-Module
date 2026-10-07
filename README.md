@@ -23,8 +23,8 @@
 
 ## Datasets
 * A (standard): 2,309 possible answers, 2,309 legal guesses
-* B (expanded): 2,309 possible answers, 12,953 legal guesses
-* C (expanded-guess search): 2,309 possible answers, 12,953 legal guesses; unlike B, only the legal guess space is expanded while the answer space remains the original possible-answer list
+* B (expanded): 12,953 possible answers, 12,953 legal guesses
+* C (expanded-guess search): 2,309 possible answers, 12,953 legal guesses; the answer space remains the original possible-answer list while the legal guess space is expanded
 
 Word lists: 3b1b/videos (_2022/wordle/data) on GitHub - cite in references.
 
@@ -54,6 +54,31 @@ Dataset A has been fully evaluated over all 2,309 possible answers:
 | random-candidate | 98.57% | 4.049 |
 | alphabetical-candidate | 97.57% | 4.316 |
 
-Dataset C is currently being evaluated over all 2,309 possible answers. It has
-12,953 legal guesses, giving the search methods a substantially larger action
-space than Dataset A; results are not yet available.
+Dataset C has also been fully evaluated over all 2,309 possible answers:
+
+| Agent | Win rate | Average guesses |
+| --- | ---: | ---: |
+| search-entropy | 100% | 3.636 |
+| search-expected_size | 100% | 3.653 |
+| search-minimax | 100% | 3.770 |
+| random-candidate | 98.57% | 4.049 |
+| alphabetical-candidate | 97.57% | 4.316 |
+
+Compared with Dataset A, Dataset C produced the following average guesses:
+
+| Agent | Dataset A | Dataset C |
+| --- | ---: | ---: |
+| entropy | 3.672 | 3.636 |
+| expected_size | 3.705 | 3.653 |
+| minimax | 3.803 | 3.770 |
+| random | 4.049 | 4.049 |
+| alphabetical | 4.316 | 4.316 |
+
+All three search heuristics achieved a 100% win rate on both Datasets A and C.
+The expanded legal guess space in C slightly reduced the average guesses for
+all three search heuristics, while the baseline results were unchanged. Dataset
+C has a much larger search/action space, so the search methods require
+substantially more computation: entropy took 846.55 ms/game, expected-size
+took 314.66 ms/game, and minimax took 270.15 ms/game. This makes Dataset C a
+trade-off between solution quality and computational cost rather than
+universally better.
