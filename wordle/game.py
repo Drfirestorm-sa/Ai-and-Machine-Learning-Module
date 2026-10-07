@@ -116,3 +116,40 @@ class GameState:
             raise TypeError("candidates must be a list of strings")
 
         self.candidate_words = candidates
+
+
+class WordleGame:
+    """Small Wordle environment for one fixed hidden target."""
+
+    def __init__(self, target: str, max_guesses: int = 6):
+        _validate_target(target)
+        self.target = target
+        self.state = GameState(max_guesses=max_guesses)
+
+    @property
+    def over(self) -> bool:
+        """Whether the game has been solved or has no guesses remaining."""
+        return self.solved or self.state.guesses_remaining == 0
+
+    @property
+    def solved(self) -> bool:
+        """Whether the latest guess matches the hidden target."""
+        return bool(
+            self.state.previous_guesses
+            and self.state.previous_guesses[-1] == self.target
+        )
+
+    def step(self, guess: str) -> int:
+        """Apply a guess and return its encoded feedback pattern."""
+        if self.over:
+            raise RuntimeError("game is already over")
+        _validate_target(guess)
+        pattern = feedback(guess, self.target)
+        self.state.previous_guesses.append(guess)
+        self.state.feedback.append(pattern)
+        for letter, mark in zip(guess, pattern_to_str(pattern)):
+            if mark == "G":
+                self.state.known_letters.add(letter)
+            elif mark == "-":
+                self.state.excluded_letters.add(letter)
+        return pattern
