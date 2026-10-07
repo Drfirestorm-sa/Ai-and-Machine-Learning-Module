@@ -1,112 +1,568 @@
-"""Sections 10-12: controlled evaluation of the agents.
+"""
+Evaluate Wordle agents on different datasets.
 
 Usage:
-    python evaluate.py --dataset A                       # all 2,309 answers
-    python evaluate.py --dataset B --games 500 --seed 42 # sampled games
-    python evaluate.py --dataset A --agents search-entropy random-candidate
+    python -u evaluate.py --dataset A --games 100
+    python -u evaluate.py --dataset A
+    python -u evaluate.py --dataset B --games 100
+    python -u evaluate.py --dataset C --games 100
 """
+
 from __future__ import annotations
-import argparse, json, platform, resource, statistics, sys, time
-from collections import Counter
+
+import argparse
+import ctypes
+import json
+import os
+import platform
+import statistics
+import sys
+import time
+from pathlib import Path
+
 import numpy as np
+
+from wordle.agents import (
+    AlphabeticalAgent,
+    Engine,
+    RandomCandidateAgent,
+    SearchAgent,
+)
 from wordle.words import load_dataset
-from wordle.game import WordleGame
-from wordle.agents import Engine, SearchAgent, RandomCandidateAgent, AlphabeticalAgent
 
 
-def make_agent(name, eng, seed):
-    if name.startswith("search-"):
-        return SearchAgent(eng, heuristic=name.split("-", 1)[1])
+RESULTS_DIR = Path("results")
+
+DEFAULT_AGENTS = [
+    "search-entropy",
+    "search-expected_size",
+    "search-minimax",
+    "random-candidate",
+    "alphabetical-candidate",
+]
+
+
+def process_rss_mb() -> float | None:
+    try:
+        if os.name == "nt":
+
+            class PROCESS_MEMORY_COUNTERS(ctypes.Structure):
+                _fields_ = [
+                    ("cb", ctypes.c_ulong),
+                    ("PageFaultCount", ctypes.c_ulong),
+                    ("PeakWorkingSetSize", ctypes.c_size_t),
+                    ("WorkingSetSize", ctypes.c_size_t),
+                    ("QuotaPeakPagedPoolUsage", ctypes.c_size_t),
+                    ("QuotaPagedPoolUsage", ctypes.c_size_t),
+                    ("QuotaPeakNonPagedPoolUsage", ctypes.c_size_t),
+                    ("QuotaNonPagedPoolUsage", ctypes.c_size_t),
+                    ("PagefileUsage", ctypes.c_size_t),
+                    ("PeakPagefileUsage", ctypes.c_size_t),
+                ]
+
+            counters = PROCESS_MEMORY_COUNTERS()
+            counters.cb = ctypes.sizeof(PROCESS_MEMORY_COUNTERS)
+
+            process = ctypes.windll.kernel32.GetCurrentProcess()
+
+            result = ctypes.windll.psapi.GetProcessMemoryInfo(
+                process,
+                ctypes.byref(counters),
+                counters.cb,
+            )
+
+            if result:
+                return counters.WorkingSetSize / (1024 * 1024)
+
+            return None
+
+        import resource
+
+        usage = resource.getrusage(resource.RUSAGE_SELF)
+
+        if sys.platform == "darwin":
+            return usage.ru_maxrss / (1024 * 1024)
+
+        return usage.ru_maxrss / 1024
+
+    except Exception:
+        return None
+
+
+def make_agent(name: str, engine: Engine):
+
+    if name == "search-entropy":
+        return SearchAgent(
+            engine,
+            heuristic="entropy",
+        )
+
+    if name == "search-expected_size":
+        return SearchAgent(
+            engine,
+            heuristic="expected_size",
+        )
+
+    if name == "search-minimax":
+        return SearchAgent(
+            engine,
+            heuristic="minimax",
+        )
+
     if name == "random-candidate":
-        return RandomCandidateAgent(eng, seed=seed)
-    if name == "dfs-alphabetical":
-        return AlphabeticalAgent(eng)
-    raise ValueError(name)
+        return RandomCandidateAgent(engine)
+
+    if name in {
+        "alphabetical-candidate",
+        "dfs-alphabetical",
+    }:
+        return AlphabeticalAgent(engine)
+
+    raise ValueError(f"Unknown agent: {name}")
 
 
-def play(agent, target, max_guesses):
+def play(
+    agent,
+    target: str,
+    max_guesses: int = 6,
+) -> tuple[bool, int]:
+
     agent.reset()
-    game = WordleGame(target, max_guesses)
-    evals0 = agent.evals
-    while not game.over:
-        g = agent.choose()
-        agent.observe(g, game.step(g))
-    return game.solved, len(game.state.previous_guesses), agent.evals - evals0
+
+    target_id = agent.engine.answers.index(target)
+
+    for _ in range(max_guesses):
+
+        guess = agent.choose()
+
+        guess_id = agent.engine.guess_index[guess]
+
+        pattern = agent.engine.P[
+            guess_id,
+            target_id,
+        ]
+
+        agent.observe(
+            guess,
+            int(pattern),
+        )
+
+        if guess == target:
+            return (
+                True,
+                len(agent.previous_guesses),
+            )
+
+    return False, max_guesses
 
 
-def evaluate(agent_name, eng, targets, max_guesses, seed):
-    agent = make_agent(agent_name, eng, seed)
-    # warm-up: computes (and caches) the root decision once; reported separately
-    t0 = time.perf_counter()
-    agent.reset(); agent.choose()
-    precompute = time.perf_counter() - t0
-    solved, guesses, evals, times = [], [], [], []
-    for t in targets:
-        t0 = time.perf_counter()
-        ok, n, ev = play(agent, t, max_guesses)
-        times.append(time.perf_counter() - t0)
-        solved.append(ok); guesses.append(n); evals.append(ev)
-    won = [n for ok, n in zip(solved, guesses) if ok]
+def evaluate(
+    agent_name: str,
+    engine: Engine,
+    targets: list[str],
+    max_guesses: int = 6,
+) -> dict:
+
+    agent = make_agent(
+        agent_name,
+        engine,
+    )
+
+    attempts_all: list[int] = []
+    attempts_successful: list[int] = []
+
+    runtimes: list[float] = []
+    eval_counts: list[int] = []
+
+    errors: list[dict] = []
+
+    wins = 0
+    failures = 0
+
+    rss_before = process_rss_mb()
+
+    total_start = time.perf_counter()
+
+    for game_number, target in enumerate(
+        targets,
+        start=1,
+    ):
+
+        eval_before = getattr(
+            agent,
+            "evals",
+            0,
+        )
+
+        start = time.perf_counter()
+
+        try:
+            won, attempts = play(
+                agent,
+                target,
+                max_guesses=max_guesses,
+            )
+
+        except Exception as exc:
+            won = False
+            attempts = max_guesses
+
+            errors.append(
+                {
+                    "target": target,
+                    "error": repr(exc),
+                }
+            )
+
+        elapsed = (
+            time.perf_counter()
+            - start
+        )
+
+        eval_after = getattr(
+            agent,
+            "evals",
+            0,
+        )
+
+        game_evals = (
+            eval_after
+            - eval_before
+        )
+
+        runtimes.append(elapsed)
+        attempts_all.append(attempts)
+        eval_counts.append(game_evals)
+
+        if won:
+            wins += 1
+            attempts_successful.append(attempts)
+        else:
+            failures += 1
+
+        if (
+            game_number % 100 == 0
+            or game_number == len(targets)
+        ):
+            print(
+                f"  {agent_name}: "
+                f"{game_number}/{len(targets)} games",
+                flush=True,
+            )
+
+    total_elapsed = (
+        time.perf_counter()
+        - total_start
+    )
+
+    rss_after = process_rss_mb()
+
+    win_rate = (
+        wins / len(targets)
+        if targets
+        else 0.0
+    )
+
+    avg_all = (
+        statistics.mean(attempts_all)
+        if attempts_all
+        else None
+    )
+
+    avg_successful = (
+        statistics.mean(attempts_successful)
+        if attempts_successful
+        else None
+    )
+
+    median_successful = (
+        statistics.median(attempts_successful)
+        if attempts_successful
+        else None
+    )
+
+    max_successful = (
+        max(attempts_successful)
+        if attempts_successful
+        else None
+    )
+
+    avg_ms_per_game = (
+        statistics.mean(runtimes) * 1000
+        if runtimes
+        else None
+    )
+
+    first_game_ms = (
+        runtimes[0] * 1000
+        if runtimes
+        else None
+    )
+
+    subsequent_game_ms = (
+        statistics.mean(runtimes[1:]) * 1000
+        if len(runtimes) > 1
+        else None
+    )
+
+    total_evals = sum(eval_counts)
+
+    avg_evals_per_game = (
+        total_evals / len(targets)
+        if targets
+        else None
+    )
+
+    distribution: dict[str, int] = {}
+
+    for attempts in attempts_all:
+        key = str(attempts)
+        distribution[key] = (
+            distribution.get(key, 0) + 1
+        )
+
     return {
         "agent": agent_name,
         "games": len(targets),
-        "win_rate": sum(solved) / len(solved),
-        "avg_guesses_solved": statistics.mean(won) if won else None,
-        "median_guesses_solved": statistics.median(won) if won else None,
-        "max_guesses_solved": max(won) if won else None,
-        "failed_games": len(solved) - sum(solved),
-        "distribution": dict(sorted(Counter(n if ok else "fail"
-                                            for ok, n in zip(solved, guesses)).items(), key=str)),
-        "total_runtime_s": sum(times),
-        "mean_time_per_game_ms": 1000 * statistics.mean(times),
-        "max_time_per_game_ms": 1000 * max(times),
-        "mean_guess_evaluations_per_game": statistics.mean(evals),
-        "first_guess": getattr(agent, "_first_guess", None),
-        "root_precompute_s": precompute,
+        "wins": wins,
+        "failures": failures,
+        "win_rate": win_rate,
+        "avg_guesses_all_games": avg_all,
+        "avg_guesses_successful_games": avg_successful,
+        "median_guesses_successful_games": median_successful,
+        "max_guesses_successful_games": max_successful,
+        "guess_distribution": distribution,
+        "avg_ms_per_game": avg_ms_per_game,
+        "first_game_ms": first_game_ms,
+        "subsequent_game_ms": subsequent_game_ms,
+        "total_runtime_seconds": total_elapsed,
+        "total_guess_evaluations": total_evals,
+        "avg_guess_evaluations_per_game": avg_evals_per_game,
+        "rss_before_mb": rss_before,
+        "rss_after_mb": rss_after,
+        "errors": errors,
     }
 
 
+def choose_targets(
+    answers: list[str],
+    games: int | None,
+    seed: int,
+) -> list[str]:
+
+    if games is None or games >= len(answers):
+        return list(answers)
+
+    rng = np.random.default_rng(seed)
+
+    indices = rng.choice(
+        len(answers),
+        size=games,
+        replace=False,
+    )
+
+    return [
+        answers[int(index)]
+        for index in indices
+    ]
+
+
 def main():
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--dataset", default="A", choices=["A", "B"])
-    ap.add_argument("--games", type=int, default=0, help="0 = every answer")
-    ap.add_argument("--seed", type=int, default=42)
-    ap.add_argument("--max-guesses", type=int, default=6)
-    ap.add_argument("--agents", nargs="+",
-                    default=["search-entropy", "search-expected_size", "search-minimax",
-                             "random-candidate", "dfs-alphabetical"])
-    ap.add_argument("--out", default=None)
-    a = ap.parse_args()
 
-    answers, guesses = load_dataset(a.dataset)
-    t0 = time.perf_counter()
-    eng = Engine(answers, guesses)
-    table_s = time.perf_counter() - t0
-    rng = np.random.default_rng(a.seed)
-    targets = answers if a.games in (0, len(answers)) else \
-        [answers[i] for i in rng.choice(len(answers), a.games, replace=False)]
+    parser = argparse.ArgumentParser(
+        description="Evaluate Wordle agents."
+    )
 
-    env = {"python": platform.python_version(), "numpy": np.__version__,
-           "platform": platform.platform(), "processor": platform.processor() or platform.machine()}
-    meta = {"dataset": a.dataset, "n_answers": len(answers), "n_guesses": len(guesses),
-            "evaluation_games": len(targets), "seed": a.seed, "max_guesses": a.max_guesses,
-            "feedback_table_build_s": table_s,
-            "feedback_table_MB": eng.P.nbytes / 1e6, "environment": env}
-    print(json.dumps(meta, indent=2))
+    parser.add_argument(
+        "--dataset",
+        choices=["A", "B", "C"],
+        default="A",
+    )
+
+    parser.add_argument(
+        "--games",
+        type=int,
+        default=None,
+    )
+
+    parser.add_argument(
+        "--seed",
+        type=int,
+        default=42,
+    )
+
+    parser.add_argument(
+        "--agents",
+        nargs="+",
+        default=DEFAULT_AGENTS,
+    )
+
+    parser.add_argument(
+        "--max-guesses",
+        type=int,
+        default=6,
+    )
+
+    parser.add_argument(
+        "--out",
+        type=str,
+        default=None,
+    )
+
+    args = parser.parse_args()
+
+    print(
+        f"Loading Dataset {args.dataset}...",
+        flush=True,
+    )
+
+    answers, guesses = load_dataset(
+        args.dataset
+    )
+
+    print(
+        f"Loaded {len(answers):,} answers and "
+        f"{len(guesses):,} guesses.",
+        flush=True,
+    )
+
+    print(
+        "Building feedback matrix...",
+        flush=True,
+    )
+
+    matrix_start = time.perf_counter()
+
+    engine = Engine(
+        answers=answers,
+        guesses=guesses,
+    )
+
+    matrix_time = (
+        time.perf_counter()
+        - matrix_start
+    )
+
+    matrix_mb = (
+        engine.P.nbytes
+        / (1024 * 1024)
+    )
+
+    print(
+        f"Feedback matrix ready in "
+        f"{matrix_time:.2f}s "
+        f"({matrix_mb:.2f} MB).",
+        flush=True,
+    )
+
+    print(
+        f"Python: {platform.python_version()}",
+        flush=True,
+    )
+
+    print(
+        f"NumPy: {np.__version__}",
+        flush=True,
+    )
+
+    print(
+        f"Platform: {platform.platform()}",
+        flush=True,
+    )
+
+    targets = choose_targets(
+        answers=answers,
+        games=args.games,
+        seed=args.seed,
+    )
+
+    print(
+        f"Evaluating {len(targets):,} games...",
+        flush=True,
+    )
 
     results = []
-    for name in a.agents:
-        r = evaluate(name, eng, targets, a.max_guesses, a.seed)
-        r["peak_rss_MB_after"] = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024
-        results.append(r)
-        print(f"{name:22s} win={r['win_rate']:.4f} avg={r['avg_guesses_solved']:.3f} "
-              f"med={r['median_guesses_solved']} max={r['max_guesses_solved']} "
-              f"fail={r['failed_games']} ms/game={r['mean_time_per_game_ms']:.2f} "
-              f"first={r['first_guess']}")
-    out = a.out or f"results/results_dataset{a.dataset}.json"
-    with open(out, "w") as f:
-        json.dump({"meta": meta, "results": results}, f, indent=2)
-    print("saved", out)
+
+    for agent_name in args.agents:
+
+        print(
+            f"\nRunning {agent_name}...",
+            flush=True,
+        )
+
+        result = evaluate(
+            agent_name=agent_name,
+            engine=engine,
+            targets=targets,
+            max_guesses=args.max_guesses,
+        )
+
+        results.append(result)
+
+        print(
+            f"{agent_name}: "
+            f"win={result['win_rate']:.4f} "
+            f"avg_all={result['avg_guesses_all_games']:.3f} "
+            f"avg_success={result['avg_guesses_successful_games']} "
+            f"fail={result['failures']} "
+            f"ms/game={result['avg_ms_per_game']:.2f}",
+            flush=True,
+        )
+
+        if result["errors"]:
+            print(
+                f"  Errors: {len(result['errors'])}",
+                flush=True,
+            )
+
+            print(
+                f"  First error: {result['errors'][0]}",
+                flush=True,
+            )
+
+    RESULTS_DIR.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+    if args.out:
+        output_file = Path(args.out)
+    else:
+        output_file = (
+            RESULTS_DIR
+            / f"results_dataset{args.dataset}.json"
+        )
+
+    output = {
+        "dataset": args.dataset,
+        "n_answers": len(answers),
+        "n_guesses": len(guesses),
+        "evaluation_games": len(targets),
+        "seed": args.seed,
+        "max_guesses": args.max_guesses,
+        "feedback_table_build_s": matrix_time,
+        "feedback_table_MB": matrix_mb,
+        "python": platform.python_version(),
+        "numpy": np.__version__,
+        "platform": platform.platform(),
+        "processor": platform.processor(),
+        "results": results,
+    }
+
+    with output_file.open(
+        "w",
+        encoding="utf-8",
+    ) as file:
+        json.dump(
+            output,
+            file,
+            indent=2,
+        )
+
+    print(
+        f"\nSaved: {output_file}",
+        flush=True,
+    )
 
 
 if __name__ == "__main__":
