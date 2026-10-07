@@ -110,3 +110,47 @@ def encode(words) -> np.ndarray:
         encoded[row] = [ord(letter) - ord("a") for letter in word]
 
     return encoded
+
+
+def pattern_matrix(guesses, answers) -> np.ndarray:
+    """Return encoded feedback for every guess/answer pair.
+
+    The calculation is performed in bounded guess chunks so the expanded
+    vocabulary does not require a second copy of the full intermediate array.
+    """
+    guess_ids = encode(guesses)
+    answer_ids = encode(answers)
+    n_guesses = len(guess_ids)
+    n_answers = len(answer_ids)
+    patterns = np.zeros((n_guesses, n_answers), dtype=np.uint8)
+
+    for start in range(0, n_guesses, 4096):
+        stop = min(start + 4096, n_guesses)
+        current = guess_ids[start:stop]
+        green = current[:, None, :] == answer_ids[None, :, :]
+        result = np.zeros(green.shape, dtype=np.uint8)
+        result[green] = 2
+
+        for position in range(WORD_LENGTH):
+            guess_letter = current[:, None, position]
+            available = (
+                (answer_ids[None, :, :] == guess_letter[:, :, None])
+                & ~green
+            ).sum(axis=2)
+            used = np.zeros((stop - start, n_answers), dtype=np.int8)
+            if position:
+                prior = current[:, None, :position] == guess_letter[:, :, None]
+                used = (prior & ~green[:, :, :position]).sum(axis=2)
+            yellow = (
+                ~green[:, :, position]
+                & (available > used)
+            )
+            result[:, :, position][yellow] = 1
+
+        patterns[start:stop] = np.sum(
+            result * _POW3[None, None, :],
+            axis=2,
+            dtype=np.uint16,
+        )
+
+    return patterns
