@@ -6,6 +6,8 @@ Usage:
     python -u evaluate.py --dataset A
     python -u evaluate.py --dataset B --games 100
     python -u evaluate.py --dataset C --games 100
+    python -u evaluate.py --dataset D --games 100
+    python -u evaluate.py --dataset E --games 100
 """
 
 from __future__ import annotations
@@ -375,7 +377,7 @@ def main():
 
     parser.add_argument(
         "--dataset",
-        choices=["A", "B", "C"],
+        choices=["A", "B", "C", "D", "E"],
         default="A",
     )
 

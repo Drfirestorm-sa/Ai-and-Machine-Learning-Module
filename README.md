@@ -7,6 +7,8 @@
     python evaluate.py --dataset A     # full evaluation (2,309 games)
     python evaluate.py --dataset B --games 300 --seed 42
     python evaluate.py --dataset C --games 300 --seed 42
+    python evaluate.py --dataset D --games 300 --seed 42
+    python evaluate.py --dataset E --games 300 --seed 42
     python make_figures.py             # guess-distribution charts
 
 ## Code -> report section map
@@ -24,7 +26,9 @@
 ## Datasets
 * A (standard): 2,309 possible answers, 2,309 legal guesses
 * B (expanded): 12,953 possible answers, 12,953 legal guesses
-* C (expanded-guess search): 2,309 possible answers, 12,953 legal guesses; the answer space remains the original possible-answer list while the legal guess space is expanded
+* C (expanded-guess search): 2,309 possible answers, 12,953 legal guesses; only the legal guess space is expanded
+* D (Cambridge guesses): original 2,309 possible answers; guesses include the original answers and cleaned five-letter Cambridge A2/B1 vocabulary
+* E (Cambridge + Oxford guesses): original 2,309 possible answers; guesses include the original answers and cleaned five-letter Cambridge/Oxford vocabulary
 
 Word lists: 3b1b/videos (_2022/wordle/data) on GitHub - cite in references.
 
@@ -40,9 +44,13 @@ each guess can produce one of 243 possible feedback patterns. After feedback,
 the candidate answer set is filtered before the next greedy choice.
 
 ## Evaluation results
-`evaluate.py` supports Datasets A, B and C, evaluates all agents under the same
+`evaluate.py` supports Datasets A–E, evaluates all agents under the same
 conditions, and records win rate, average guesses, guess distribution, runtime,
-and guess-evaluation counts. The default maximum is 6 guesses.
+and guess-evaluation counts. Datasets D and E keep the original answer list
+unchanged and vary the legal guess vocabulary. The default maximum is 6 guesses.
+
+The new D/E results should be generated before drawing performance conclusions;
+no D/E performance results are reported yet.
 
 Dataset A has been fully evaluated over all 2,309 possible answers:
 

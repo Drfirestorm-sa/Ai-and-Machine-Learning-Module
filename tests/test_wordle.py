@@ -97,3 +97,47 @@ def test_vectorised_matches_scalar_random_and_duplicate_cases():
     )
 
     matrix = pattern_matrix(guesses, test_answers)
+
+
+# ---------------------------------------------------------------------------
+# Vocabulary dataset D/E integration tests
+
+
+def test_datasets_d_and_e_preserve_original_answers():
+    """D and E change legal guesses without changing possible answers."""
+    original_answers, _ = load_dataset("A")
+    answers_d, guesses_d = load_dataset("D")
+    answers_e, guesses_e = load_dataset("E")
+
+    assert answers_d == original_answers
+    assert answers_e == original_answers
+
+    # Every possible target must remain legal to guess.
+    assert set(answers_d).issubset(guesses_d)
+    assert set(answers_e).issubset(guesses_e)
+
+
+def test_dataset_e_guess_set_contains_dataset_d_guess_set():
+    """Dataset E's combined vocabulary should include all Dataset D guesses."""
+    _, guesses_d = load_dataset("D")
+    _, guesses_e = load_dataset("E")
+
+    assert set(guesses_d).issubset(set(guesses_e))
+
+
+def test_datasets_d_and_e_have_unique_valid_words():
+    """Vocabulary integration produces unique five-letter ASCII words."""
+    for dataset in ("D", "E"):
+        answers, guesses = load_dataset(dataset)
+
+        assert len(answers) == len(set(answers))
+        assert len(guesses) == len(set(guesses))
+        assert all(
+            len(word) == 5 and word.isascii() and word.isalpha()
+            for word in answers
+        )
+        assert all(
+            len(word) == 5 and word.isascii() and word.isalpha()
+            for word in guesses
+        )
+
